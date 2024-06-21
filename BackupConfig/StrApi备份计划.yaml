@@ -1,0 +1,9 @@
+---
+backup_path: Backup
+path: "Y:/StrApi备份"
+path_title: StrApi备份
+backup_hashs:
+  - 287b39a8d1e5845f8821bda39519216b7e5de20d4e9785d7b4f477b781f54f9b
+mode: 2
+preserve_version: 7
+save_days: 30

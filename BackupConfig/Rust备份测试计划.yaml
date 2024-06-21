@@ -1,0 +1,18 @@
+# backup_path：输入相对路径则在程序目录下Backup目录
+# 输入绝对路径则根据绝对目录
+# 目录不存在时自动创建
+backup_path: Backup
+# path：目标备份文件夹
+path: "Y:/Rust备份测试"
+# path_title：目标备份文件夹名
+path_title: "Rust备份测试"
+# 初始值 backup_hashs: []
+backup_hashs: [] 
+#1:动态目录模式 2:版本控制模式
+mode: 1
+# 在mode2中使用
+# 表示一个备份任务应当保留几个版本
+preserve_version: 7
+# 在mode1中使用
+# 表示一个备份任务应当保留几天
+save_days: 30

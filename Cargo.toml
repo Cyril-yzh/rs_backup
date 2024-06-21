@@ -1,0 +1,24 @@
+[package]
+name = "rsbk"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+#(序/反序)列化
+serde = { version = "1.0.149", features = ["derive"] }
+#读取配置文件
+serde_yaml = "0.9.14"
+#sha256
+sha256 ="1.1.1"
+#就是system_time转string
+chrono = "0.4.21"
+# HTTP 
+# 轻量级HTTP请求场景，tokio除了增加代码复杂性，并无法带来什么额外的优势
+# reqwest = "0.11.13"
+# 重量级HTTP请求场景，tokio充分利用了Rust提供的各种零成本抽象和高性能特性
+# tokio = "1.22.0"
+# log日志
+log = "0.4.8"
+log4rs = "0.10.0"

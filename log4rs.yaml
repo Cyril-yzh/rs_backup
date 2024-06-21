@@ -1,0 +1,52 @@
+---
+# log4rs.yaml
+# 检查配置文件变动的时间间隔
+refresh_rate: 30 seconds
+# appender 负责将日志收集到控制台或文件, 可配置多个
+appenders:
+  stdout:
+    kind: console
+  file:
+    kind: file
+    path: "log/log.log"
+    append: true # 追加模式, 即每次在已有文件末尾添加日志, 默认为 true
+
+    encoder:
+      # log 信息模式
+      kind: pattern
+      #{l}:log类型 例:INFO
+      #{t}:可能是初始化位置 例:main
+      #{M}:log调用位置 例:rsbk::mods::log
+      #{f}:log调用文件位置 例:-src\mods\log.rs
+
+      # pattern: "{d} {l} {M} - {m}{n}"
+      pattern: "{d(%+)(local)} - {m}{n}"
+      
+  roll: #定义rooling_file的appenders
+    kind: rolling_file
+    path: "log/log.log"
+    append: true
+    encoder:
+      kind: pattern
+      pattern: "{d(%+)(local)} {h({l})} [{f}-> line:{L}]  {m}-{n}"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 5mb #限制大小为1024Byte
+      roller:
+        #kind: delete
+        kind: fixed_window
+        pattern: 'log/log-{}.log'
+        base: 0
+        count: 10
+
+# 对全局 log 进行配置
+root:
+  level: info
+  appenders:
+    - stdout
+    # - file
+    - roll
+
+

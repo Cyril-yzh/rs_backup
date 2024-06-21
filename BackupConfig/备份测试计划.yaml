@@ -1,0 +1,15 @@
+---
+backup_path: Backup
+path: //192.168.23.62/home/rs_backup
+path_title: rs_backup
+backup_hashs:
+  - 55e6e02901f1639586f756cdc6eeea30232c206decd15d19641f451ca939a57d
+  - 0f0f6bdf26d0a188c6cc01d20ab066eeebe8c12fd7fba6c00f9b1914c2801a98
+  - 46b9cd651d8bb6160ba70354f7eac3bc469b236d9481497eb8d08f1fae2a7978
+  - a0393d79571cc9fc9fab42a10c6330a943fe2b016593ed6ffe85ca1bf96c0350
+  - ca875e75f0a818d51fb7dbbf8d5b0d8e10a9642ee5fad6d671e994fde43b37cf
+  - 12b471c901ec4aadefb7fcab3fe85c127ef631f37157223936f3ac7999482e22
+  - 515e937c8e2738dec960155f9f409ccd2332f70f37b299223319edeaacd9baf9
+mode: 2
+preserve_version: 7
+save_days: 30

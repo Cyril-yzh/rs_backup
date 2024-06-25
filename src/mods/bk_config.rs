@@ -1,181 +1,157 @@
 use chrono::{DateTime, Local};
-use log::{warn,error};
+use log::error;
 use serde::{Deserialize, Serialize};
 use sha256;
+use std::collections::HashMap;
 use std::io::{Error, Read};
+use std::sync::Mutex;
 use std::{
-    fs::{metadata, read_dir, File},
+    fs::{metadata, read_dir, File, OpenOptions},
     io::Write,
     path::PathBuf,
 };
 
+lazy_static::lazy_static! {
+    static ref NEXT_BACKUP_TIMES: Mutex<HashMap<String, DateTime<Local>>> = Mutex::new(HashMap::new());
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "mode")]
+pub enum BackupMode {
+    IncrementalMode {
+        /// 表示一个备份任务应当保留几天
+        save_days: usize,
+    },
+    VersionMode {
+        /// # 初始值 backup_hashs: []
+        backup_hashs: Vec<String>,
+        /// 表示一个备份任务应当保留几个版本
+        preserve_version: usize,
+    },
+}
+
 ///读取hash
 ///取 {path_name}_hash.yaml
-#[derive(Debug, Serialize, Deserialize)]
-#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BackupConfig {
+    // pub backup_schedule_name: String,
     /// 备份目的地
-    ///
     /// 输入相对路径则在程序目录下Backup目录
-    ///
     /// 输入绝对路径则根据绝对目录
-    ///
     /// 目录不存在时自动创建
-    ///
-    /// 例：
-    ///
-    ///     C:/BACKUP
-    ///
-    ///     BACKUP
-    pub backup_path: String,
+    pub destination_path: String,
     /// 需备份根目录
-    ///
-    /// 例：
-    ///
-    ///     Y:/XXX_Backup
-    pub path: String,
-    /// 需备份根目录名
-    ///
-    /// 例：
-    ///
-    ///     XXX_Backup
-    pub path_title: String,
-    /// # 初始值 backup_hashs: []
-    pub backup_hashs: Vec<String>,
+    pub source_path: String,
+    /// 每次备份的间隔时间(分钟)
+    pub backup_interval_minutes: usize,
+    /// 首次备份的时间(mm:ss)
+    pub initial_backup_time: String,
+    pub is_effect: bool,
     /// 备份模式
     ///
-    /// 1:动态目录模式
+    /// 1:增量备份模式
     ///
     /// 2:版本控制模式
-    pub mode: usize,
-    /// 仅在mode2中使用
-    ///
-    /// 表示一个备份任务应当保留几个版本
-    pub preserve_version: usize,
-    /// 在mode1和2中使用
-    ///
-    /// 表示一个备份任务应当保留几天
-    pub save_days: usize,
+    pub options: BackupMode,
 }
 
 impl BackupConfig {
-    pub fn create(task_name: &String) -> Result<BackupConfig, Error> {
-        let hash_path = BackupConfig::get_hash_path(task_name);
-        if hash_path.is_file() {
-            let mut file = File::open(hash_path).unwrap();
-            let mut buf = String::new();
-            match file.read_to_string(&mut buf) {
-                Ok(_) => {
-                    let result: BackupConfig;
-                    match serde_yaml::from_str(buf.as_str()) {
-                        Ok(c) => {
-                            result = c;
-                            Ok(result)
-                        }
-                        Err(e) => {
-                            error!(
-                                "{:#?}",
-                                &(String::from(":读取配置文件时发生错误:") + e.to_string().as_str()),
-                            );
-                            Err(Error::new(std::io::ErrorKind::Other, "读取配置文件时发生错误"))
-                            // panic!("读取配置文件时发生错误");
-                        }
-                    }
-                }
-                Err(e) => {
-                    warn!(
-                        "{:#?}",
-                        &(String::from(":读取配置文件时发生错误:") + e.to_string().as_str()),
-                    );
-                    Err(Error::from(e))
-                }
-            }
-        } else {
-            warn!(
-                "{:#?}",
-                &(String::from(":找不到配置文件,文件应为 ")
-                    + hash_path.as_os_str().to_str().unwrap())
-            );
-            Err(Error::new(std::io::ErrorKind::Other, "找不到配置文件"))
-        }
+    pub fn create(path: &PathBuf) -> Result<BackupConfig, Error> {
+        let mut file = File::open(path)?;
+        let mut buf = String::new();
+        file.read_to_string(&mut buf)?;
+        serde_yaml::from_str(&buf).map_err(|e| {
+            error!("读取配置文件时发生错误: {:?}", e);
+            Error::new(std::io::ErrorKind::Other, "读取配置文件时发生错误")
+        })
+    }
+
+    //内部函数 取hash存放地址
+    pub fn get_hash_path(task_name: &str) -> PathBuf {
+        let mut hash_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        hash_path.push("BackupConfig");
+        hash_path.push(task_name.to_owned() + ".yaml");
+        hash_path
     }
 
     ///整个目录取Hash
-    ///考虑Err -> rsmb::send_mail
-    #[allow(unused)]
-    pub fn get_hash(root_path: &String) -> Result<String, Error> {
-        let mut path_list = vec![String::from(root_path)];
-        let mut modified_list: Vec<String> = Vec::new();
-        let mut start_index = 0;
-        let mut list_len = 0;
-        //取path list
-        loop {
-            list_len = path_list.len();
-            for index in start_index..path_list.len() {
-                let path1 = &path_list[index];
-                if metadata(path1)?.is_dir() {
-                    for child_dir in read_dir(&path1)? {
-                        path_list.push(String::from(
-                            child_dir?.path().as_os_str().to_str().expect(""),
-                        ));
+    pub fn get_hash(root_path: &str) -> Result<String, Error> {
+        let mut path_list = vec![root_path.to_string()];
+        let mut modified_list = Vec::new();
+
+        while let Some(path) = path_list.pop() {
+            if let Ok(metadata) = metadata(&path) {
+                if metadata.is_dir() {
+                    for entry in read_dir(&path)? {
+                        let child_path = entry?.path().to_string_lossy().to_string();
+                        path_list.push(child_path.clone());
                     }
-                }
-                let path2 = &path_list[index];
-                if metadata(path2)?.is_dir() {
-                    for child_dir in read_dir(&path2)? {
-                        let datetime: DateTime<Local> = child_dir?.metadata()?.modified()?.into();
-                        modified_list.push(datetime.format("%Y-%m-%d %T").to_string());
-                    }
+                } else if metadata.is_file() {
+                    let modified_time: DateTime<Local> = metadata.modified()?.into();
+                    modified_list.push(modified_time.format("%Y-%m-%d %T").to_string());
                 }
             }
-            if list_len == start_index {
-                break;
-            }
-            start_index = list_len;
         }
 
-        let mut hash_str = String::new();
-        //暂时这么写
-        for p in path_list.iter() {
-            hash_str += p;
-        }
-        for m in modified_list.iter() {
-            hash_str += m;
-        }
-        ///返回hash
-        let result = sha256::digest(hash_str);
-        Ok(result)
+        let mut hash_str = path_list.join("");
+        hash_str += &modified_list.join("");
+        Ok(sha256::digest(hash_str))
     }
+
     //写入Hash
-    #[allow(unused)]
-    pub fn set_hash(&mut self, yaml_name: &String, hash: &String) -> Result<(()), Error> {
+    pub fn set_hash(&mut self, yaml_name: &str, hash: &str) -> Result<(), Error> {
         let hash_path = BackupConfig::get_hash_path(yaml_name);
-        let mut file = File::create(hash_path)?;
-        if !self.backup_hashs.contains(&hash) {
-            if &self.backup_hashs.len() == &self.preserve_version {
-                //移除第一个并插入
-                self.backup_hashs.remove(0);
-                self.backup_hashs.push(hash.to_owned());
+    
+        // Open the file in append mode to avoid overwriting
+        let mut file = OpenOptions::new().write(true).truncate(true).open(&hash_path)?;
+    
+        if let BackupMode::VersionMode {
+            backup_hashs,
+            preserve_version,
+        } = &mut self.options
+        {
+            if !backup_hashs.contains(&hash.to_string()) {
+                if backup_hashs.len() == *preserve_version {
+                    backup_hashs.remove(0);
+                }
+                backup_hashs.push(hash.to_string());
+    
+                // Serialize the struct to YAML
+                let yaml_str = match serde_yaml::to_string(self) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        return Err(Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to serialize BackupConfig to YAML: {:?}", e),
+                        ));
+                    }
+                };
+    
+                file.write_all(yaml_str.as_bytes())?;
+                Ok(())
             } else {
-                //插入
-                self.backup_hashs.push(hash.to_owned());
+                Err(Error::new(
+                    std::io::ErrorKind::Other,
+                    "已存在此Hash,无需进行写入",
+                ))
             }
-            let mut buf = serde_yaml::to_string(&self).unwrap();
-            file.write_all(buf.as_bytes());
-            Ok(())
         } else {
-            // Err(Error::last_os_error())
             Err(Error::new(
                 std::io::ErrorKind::Other,
-                "已存在此Hash,无需进行写入",
+                "动态模式不需要写入Hash",
             ))
         }
     }
-    //内部函数 取hash存放地址
-    fn get_hash_path(yaml_name: &String) -> PathBuf {
-        let mut hash_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        hash_path.push("BackupConfig");
-        hash_path.push(yaml_name.to_owned() + ".yaml");
-        hash_path
+
+    /// 自动识别 source_path 中的路径标题
+    pub fn detect_path_title(&self) -> Option<String> {
+        // 通过分隔符 '/' 或 '\\' 获取最后一个路径段
+        if let Some(sep_pos) = self.source_path.rfind('/') {
+            Some(self.source_path[(sep_pos + 1)..].to_string())
+        } else if let Some(sep_pos) = self.source_path.rfind('\\') {
+            Some(self.source_path[(sep_pos + 1)..].to_string())
+        } else {
+            None
+        }
     }
 }

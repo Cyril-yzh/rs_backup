@@ -1,15 +1,16 @@
+use super::{
+    base_bk_option,
+    bk_config::{BackupConfig, BackupMode},
+};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-
-use super::{base_bk_option, bk_config::BackupConfig};
-use log::{error, info, warn};
 
 ///基于版本控制的备份模式，根据文件的哈希值判断是否需要备份，并保留指定数量的历史备份版本
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VersionMode {
     pub task_config: BackupConfig,
 }
-
 impl VersionMode {
     /// 创建整个备份计划
     /// 应当只使用这个create生成计划
@@ -23,20 +24,22 @@ impl VersionMode {
     /// 获取成功后，获取所有需要备份的文件路径，并根据路径创建相应的文件夹。
     /// 然后将文件复制到备份目录中，并记录备份大小。
     /// 最后将哈希值写入配置文件中，表示备份完成。
-    pub fn backup(mut self, task_name: &String) {
-        // 备份目录
-        let mut backup_path: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
+    pub fn backup(&mut self, task_name: &str) {
         // 获取hash
-        match BackupConfig::get_hash(&self.task_config.path) {
+        match BackupConfig::get_hash(&self.task_config.source_path) {
             Ok(hash) => {
-                if !self.task_config.backup_hashs.contains(&hash) {
-                    self.backup_files(task_name, &hash, &mut backup_path);
+                let mode = &self.task_config.options;
+                if let BackupMode::VersionMode { backup_hashs, .. } = mode {
+                    if !backup_hashs.contains(&hash) {
+                        self.backup_files(task_name, &hash);
+                    } else {
+                        info!(
+                            "{:#?}",
+                            &(task_name.to_owned() + ":检查到无更新,等待下一个备份任务")
+                        );
+                    }
                 } else {
-                    info!(
-                        "{:#?}",
-                        &(task_name.to_owned() + ":检查到无更新,等待下一个备份任务")
-                    );
+                    self.backup_files(task_name, &hash);
                 }
             }
             Err(e) => {
@@ -49,61 +52,91 @@ impl VersionMode {
         }
     }
 
-    fn backup_files(self: &mut Self, task_name: &String, hash: &String, backup_path: &mut PathBuf) {
+    fn backup_files(&mut self, task_name: &str, hash: &str) {
         info!(
             "{:#?}",
             &(task_name.to_owned() + ":当前任务使用版本控制模式,检查到有更新,开始备份")
         );
 
-        let hash_len = self.task_config.backup_hashs.len() + 1;
-        let total_len = &self.task_config.preserve_version + 1;
+        let mut backup_path: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-        if &hash_len >= &total_len {
-            match base_bk_option::remove_first_version(
-                &self.task_config.backup_path,
-                &self.task_config.path_title,
-                &self.task_config.preserve_version,
-            ) {
-                Ok(s) => {
-                    *backup_path = s;
-                    info!(
-                        "{:#?}",
-                        &(task_name.to_owned() + ":检查到历史版本过多,已删除早期备份")
-                    );
+        if let BackupMode::VersionMode {
+            backup_hashs,
+            preserve_version,
+        } = &self.task_config.options
+        {
+            let hash_len = backup_hashs.len() + 1;
+            let total_len = *preserve_version + 1;
+            if hash_len >= total_len {
+                match base_bk_option::remove_first_version(
+                    &self.task_config.destination_path,
+                    &self.task_config.detect_path_title().unwrap_or_default(),
+                    preserve_version,
+                ) {
+                    Ok(s) => {
+                        backup_path = s;
+                        info!(
+                            "{:#?}",
+                            &(task_name.to_owned() + ":检查到历史版本过多,已删除早期备份")
+                        );
+                    }
+                    Err(e) => {
+                        error!(
+                            "{:#?}",
+                            &(task_name.to_owned()
+                                + "删除早期备份时发生错误:"
+                                + e.to_string().as_str()),
+                        );
+                        return;
+                    }
                 }
-                Err(e) => {
-                    error!(
-                        "{:#?}",
-                        &(task_name.to_owned()
-                            + "删除早期备份时发生错误:"
-                            + e.to_string().as_str()),
-                    );
-                    return;
+            }
+
+            if backup_path == PathBuf::from(env!("CARGO_MANIFEST_DIR")) {
+                match base_bk_option::get_backup_path_by_version(
+                    &self.task_config.destination_path,
+                    &self.task_config.detect_path_title().unwrap_or_default(),
+                    &backup_hashs.len(),
+                    preserve_version,
+                ) {
+                    Ok(s) => backup_path = s,
+                    Err(e) => {
+                        error!(
+                            "{:#?}",
+                            &(task_name.to_owned()
+                                + "获取备份路径时发生错误:"
+                                + e.to_string().as_str()),
+                        );
+                        return;
+                    }
+                }
+            }
+        } else {
+            info!(
+                "{:#?}",
+                &(task_name.to_owned() + ":当前任务使用动态目录模式,检查到有更新,开始备份")
+            );
+
+            if backup_path == PathBuf::from(env!("CARGO_MANIFEST_DIR")) {
+                match base_bk_option::get_backup_path(
+                    &self.task_config.destination_path,
+                    &self.task_config.detect_path_title().unwrap_or_default(),
+                ) {
+                    Ok(s) => backup_path = s,
+                    Err(e) => {
+                        error!(
+                            "{:#?}",
+                            &(task_name.to_owned()
+                                + "获取备份路径时发生错误:"
+                                + e.to_string().as_str()),
+                        );
+                        return;
+                    }
                 }
             }
         }
 
-        if *backup_path == PathBuf::from(env!("CARGO_MANIFEST_DIR")) {
-            match base_bk_option::get_backup_path_by_version(
-                &self.task_config.backup_path,
-                &self.task_config.path_title,
-                &self.task_config.backup_hashs.len(),
-                &self.task_config.preserve_version,
-            ) {
-                Ok(s) => *backup_path = s,
-                Err(e) => {
-                    error!(
-                        "{:#?}",
-                        &(task_name.to_owned()
-                            + "获取备份路径时发生错误:"
-                            + e.to_string().as_str()),
-                    );
-                    return;
-                }
-            }
-        }
-
-        if *backup_path == PathBuf::from(env!("CARGO_MANIFEST_DIR")) {
+        if backup_path == PathBuf::from(env!("CARGO_MANIFEST_DIR")) {
             warn!(
                 "{:#?}",
                 &(task_name.to_owned() + "检查hash有更新,但未获取备份路径,跳过等待下一个备份任务"),
@@ -111,18 +144,18 @@ impl VersionMode {
             return;
         }
 
-        match base_bk_option::get_all_path(&self.task_config.path) {
+        match base_bk_option::get_all_path(&self.task_config.source_path) {
             Ok(path_list) => {
                 match base_bk_option::create_all_dir(
                     &path_list,
-                    backup_path,
-                    &self.task_config.path_title,
+                    &backup_path,
+                    &self.task_config.detect_path_title().unwrap_or_default(),
                 ) {
                     Ok(()) => {
                         match base_bk_option::copy_file(
                             &path_list,
-                            backup_path,
-                            &self.task_config.path_title,
+                            &backup_path,
+                            &self.task_config.detect_path_title().unwrap_or_default(),
                         ) {
                             Ok(size) => {
                                 info!(
@@ -133,24 +166,28 @@ impl VersionMode {
                                         + "]MB"),
                                 );
 
-                                match self.task_config.set_hash(task_name, hash) {
-                                    Ok(_) => {
-                                        info!(
-                                            "{:#?}",
-                                            &(task_name.to_owned()
-                                                + ":hash写入完成,备份目录为 "
-                                                + &backup_path.as_os_str().to_str().unwrap()
-                                                + ",等待下一个备份任务"),
-                                        );
-                                    }
-                                    Err(e) => {
-                                        error!(
-                                            "{:#?}",
-                                            &(task_name.to_owned()
-                                                + "写入hash时发生错误:"
-                                                + e.to_string().as_str()),
-                                        );
-                                        return;
+                                if let BackupMode::VersionMode { .. } =
+                                    &mut self.task_config.options
+                                {
+                                    match self.task_config.set_hash(task_name, hash) {
+                                        Ok(_) => {
+                                            info!(
+                                                "{:#?}",
+                                                &(task_name.to_owned()
+                                                    + ":hash写入完成,备份目录为 "
+                                                    + &backup_path.as_os_str().to_str().unwrap()
+                                                    + ",等待下一个备份任务"),
+                                            );
+                                        }
+                                        Err(e) => {
+                                            error!(
+                                                "{:#?}",
+                                                &(task_name.to_owned()
+                                                    + "写入hash时发生错误:"
+                                                    + e.to_string().as_str()),
+                                            );
+                                            return;
+                                        }
                                     }
                                 }
                             }

@@ -1,4 +1,0 @@
-backup_paths:
-  - "备份测试计划"
-backup_hour: 10
-backup_day: 1

@@ -1,0 +1,5 @@
+destination_path: Backup
+source_path: X:\App
+options:
+  mode: IncrementalMode
+  save_days: 30

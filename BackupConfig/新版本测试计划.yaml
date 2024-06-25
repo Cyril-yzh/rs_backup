@@ -5,10 +5,5 @@ initial_backup_time: 9:30
 is_effect: true
 options:
   mode: VersionMode
-  backup_hashs:
-  - b742f8dde26cff26c5aa5c9b42dd864ea968a1cd223706b724f65027d8805e48
-  - 785a5be37a6cc1d82c00bed635e0982b15c1a8f0cdbdc52b4b9fe04e89f2954c
-  - 288924d777c8ad3e67069392a8cac021a0a1124ca64f213fa078fdc33985f518
-  - 16c815415d7d8c3c8b2cf7677d99f6c920bdf7a3b901c07d7f564cddf4547d88
-  - bbc6e8322052c6f4e32028ef1c7f10027fa215277f3817a0362c2c3f62d3dcff
+  backup_hashs: []
   preserve_version: 7

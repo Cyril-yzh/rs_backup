@@ -1,6 +1,6 @@
-destination_path: Backup
-source_path: X:\App
-backup_interval_minutes: 1
+backup_destination_path: /home/sam/rust_project/rs_backup/backup1
+backup_source_path: /App/test
+backup_interval_minutes: 2
 initial_backup_time: 9:30
 is_effect: true
 options:

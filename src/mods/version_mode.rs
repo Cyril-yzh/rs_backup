@@ -26,7 +26,7 @@ impl VersionMode {
     /// 最后将哈希值写入配置文件中，表示备份完成。
     pub fn backup(&mut self, task_name: &str) {
         // 获取hash
-        match BackupConfig::get_hash(&self.task_config.source_path) {
+        match BackupConfig::get_hash(&self.task_config.backup_source_path) {
             Ok(hash) => {
                 let mode = &self.task_config.options;
                 if let BackupMode::VersionMode { backup_hashs, .. } = mode {
@@ -69,7 +69,7 @@ impl VersionMode {
             let total_len = *preserve_version + 1;
             if hash_len >= total_len {
                 match base_bk_option::remove_first_version(
-                    &self.task_config.destination_path,
+                    &self.task_config.backup_destination_path,
                     &self.task_config.detect_path_title().unwrap_or_default(),
                     preserve_version,
                 ) {
@@ -94,7 +94,7 @@ impl VersionMode {
 
             if backup_path == PathBuf::from(env!("CARGO_MANIFEST_DIR")) {
                 match base_bk_option::get_backup_path_by_version(
-                    &self.task_config.destination_path,
+                    &self.task_config.backup_destination_path,
                     &self.task_config.detect_path_title().unwrap_or_default(),
                     &backup_hashs.len(),
                     preserve_version,
@@ -119,7 +119,7 @@ impl VersionMode {
 
             if backup_path == PathBuf::from(env!("CARGO_MANIFEST_DIR")) {
                 match base_bk_option::get_backup_path(
-                    &self.task_config.destination_path,
+                    &self.task_config.backup_destination_path,
                     &self.task_config.detect_path_title().unwrap_or_default(),
                 ) {
                     Ok(s) => backup_path = s,
@@ -144,7 +144,7 @@ impl VersionMode {
             return;
         }
 
-        match base_bk_option::get_all_path(&self.task_config.source_path) {
+        match base_bk_option::get_all_path(&self.task_config.backup_source_path) {
             Ok(path_list) => {
                 match base_bk_option::create_all_dir(
                     &path_list,

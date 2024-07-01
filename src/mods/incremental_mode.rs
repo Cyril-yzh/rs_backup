@@ -27,7 +27,7 @@ impl IncrementalMode {
         let backup_path: PathBuf;
 
         match base_bk_option::get_backup_path(
-            &self.task_config.destination_path,
+            &self.task_config.backup_destination_path,
             &self.task_config.detect_path_title().unwrap_or_default(),
         ) {
             Ok(path) => backup_path = path,
@@ -42,7 +42,7 @@ impl IncrementalMode {
 
         if let BackupMode::IncrementalMode { save_days } = self.task_config.options {
             match base_bk_option::get_all_path_by_day(
-                &self.task_config.source_path,
+                &self.task_config.backup_source_path,
                 &String::from(backup_path.as_path().to_str().expect("")),
                 &self.task_config.detect_path_title().unwrap_or_default(),
                 save_days,

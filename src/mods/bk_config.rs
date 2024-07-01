@@ -34,14 +34,13 @@ pub enum BackupMode {
 ///取 {path_name}_hash.yaml
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BackupConfig {
-    // pub backup_schedule_name: String,
     /// 备份目的地
     /// 输入相对路径则在程序目录下Backup目录
     /// 输入绝对路径则根据绝对目录
     /// 目录不存在时自动创建
-    pub destination_path: String,
+    pub backup_destination_path: String,
     /// 需备份根目录
-    pub source_path: String,
+    pub backup_source_path: String,
     /// 每次备份的间隔时间(分钟)
     pub backup_interval_minutes: usize,
     /// 首次备份的时间(mm:ss)
@@ -68,8 +67,7 @@ impl BackupConfig {
 
     //内部函数 取hash存放地址
     pub fn get_hash_path(task_name: &str) -> PathBuf {
-        let mut hash_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        hash_path.push("BackupConfig");
+        let mut hash_path = PathBuf::from("BackupConfig");
         hash_path.push(task_name.to_owned() + ".yaml");
         hash_path
     }
@@ -101,10 +99,13 @@ impl BackupConfig {
     //写入Hash
     pub fn set_hash(&mut self, yaml_name: &str, hash: &str) -> Result<(), Error> {
         let hash_path = BackupConfig::get_hash_path(yaml_name);
-    
+
         // Open the file in append mode to avoid overwriting
-        let mut file = OpenOptions::new().write(true).truncate(true).open(&hash_path)?;
-    
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&hash_path)?;
+
         if let BackupMode::VersionMode {
             backup_hashs,
             preserve_version,
@@ -115,7 +116,7 @@ impl BackupConfig {
                     backup_hashs.remove(0);
                 }
                 backup_hashs.push(hash.to_string());
-    
+
                 // Serialize the struct to YAML
                 let yaml_str = match serde_yaml::to_string(self) {
                     Ok(s) => s,
@@ -126,7 +127,7 @@ impl BackupConfig {
                         ));
                     }
                 };
-    
+
                 file.write_all(yaml_str.as_bytes())?;
                 Ok(())
             } else {
@@ -146,10 +147,10 @@ impl BackupConfig {
     /// 自动识别 source_path 中的路径标题
     pub fn detect_path_title(&self) -> Option<String> {
         // 通过分隔符 '/' 或 '\\' 获取最后一个路径段
-        if let Some(sep_pos) = self.source_path.rfind('/') {
-            Some(self.source_path[(sep_pos + 1)..].to_string())
-        } else if let Some(sep_pos) = self.source_path.rfind('\\') {
-            Some(self.source_path[(sep_pos + 1)..].to_string())
+        if let Some(sep_pos) = self.backup_source_path.rfind('/') {
+            Some(self.backup_source_path[(sep_pos + 1)..].to_string())
+        } else if let Some(sep_pos) = self.backup_source_path.rfind('\\') {
+            Some(self.backup_source_path[(sep_pos + 1)..].to_string())
         } else {
             None
         }

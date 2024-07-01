@@ -170,11 +170,6 @@ pub fn get_backup_path(root_name: &String, backup_name: &String) -> Result<PathB
     Ok(backup_path)
 }
 
-#[allow(unused)]
-/// 获取或创建备份路径,返回可用的备份目录
-/// backup_name取config,
-/// current_version取hashs.len()
-/// total_version取config
 pub fn get_backup_path_by_version(
     root_name: &String,
     backup_name: &String,
@@ -192,8 +187,10 @@ pub fn get_backup_path_by_version(
         }
         if index >= *total_version {
             remove_first_version(root_name, backup_name, total_version)?;
+            index = *total_version;
+        } else {
+            index += 1;
         }
-        index += 1;
         backup_path.pop();
     }
 
@@ -202,7 +199,6 @@ pub fn get_backup_path_by_version(
     Ok(backup_path)
 }
 
-#[allow(unused)]
 /// 删除最旧的备份版本并重命名后续版本
 /// backup_name：存储文件夹名
 /// version：应当保留版本数量
@@ -212,27 +208,25 @@ pub fn remove_first_version(
     backup_name: &String,
     version: &usize,
 ) -> Result<PathBuf, Error> {
-    let mut index = 1;
     let mut path1 = get_backup_base_path(root_name);
     path1.push(backup_name);
 
-    while index <= *version {
-        let path2 = path1.join(format!("bk_version_{}", index + 1));
-        if path1.join(format!("bk_version_{}", index)).is_dir() {
-            fs::remove_dir_all(&path1.join(format!("bk_version_{}", index)))?;
-            if path2.is_dir() {
-                fs::rename(&path2, &path1.join(format!("bk_version_{}", index)))?;
-            }
-        }
-        index += 1;
+    let old_version_path = path1.join(format!("bk_version_0"));
+    if old_version_path.is_dir() {
+        fs::remove_dir_all(&old_version_path)?;
     }
 
-    fs::create_dir_all(&path1.join(format!("bk_version_{}", 1)))?;
-    Ok(path1)
+    for index in 1..=*version {
+        let old_path = path1.join(format!("bk_version_{}", index));
+        let new_path = path1.join(format!("bk_version_{}", index - 1));
+        if old_path.is_dir() {
+            fs::rename(&old_path, &new_path)?;
+        }
+    }
+
+    Ok(path1.join(format!("bk_version_{}", *version - 1)))
 }
 
-
-#[allow(unused)]
 /// 删除指定根目录内的所有空目录
 pub fn delete_all_empty_dir(root_path: &String) -> Result<bool, Error> {
     let mut is_empty = true;
@@ -251,9 +245,6 @@ pub fn delete_all_empty_dir(root_path: &String) -> Result<bool, Error> {
     Ok(is_empty)
 }
 
-
-/// 删除指定天数内未修改的文件
-#[allow(unused)]
 /// 删除指定天数内未修改的文件
 pub fn delete_expired_file(root_path: &String, day: usize) -> Result<bool, Error> {
     let save_day = Local::now() - Duration::days(day as i64);
@@ -288,13 +279,12 @@ pub fn delete_expired_file(root_path: &String, day: usize) -> Result<bool, Error
     Ok(true)
 }
 
-
 fn get_backup_base_path(root_name: &String) -> PathBuf {
     let path = Path::new(root_name);
     if path.is_dir() {
         return path.to_path_buf();
     }
-    let mut base_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut base_path = PathBuf::from("BackupConfig");
     base_path.push(root_name);
     base_path
 }

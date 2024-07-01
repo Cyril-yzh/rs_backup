@@ -1,6 +1,9 @@
 use super::bk_config::{BackupConfig, BackupMode};
+// use super::network_interface_operate::{shutdown_all_interfaces, startup_all_interfaces};
 use super::{incremental_mode::IncrementalMode, version_mode::VersionMode};
 use chrono::{DateTime, Duration, Local, Timelike};
+use chrono_tz::Asia::Shanghai;
+use chrono_tz::Tz;
 use log::{error, warn};
 use std::collections::HashMap;
 use std::fs::read_dir;
@@ -10,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 lazy_static::lazy_static! {
-    static ref NEXT_BACKUP_TIMES: Mutex<HashMap<String, DateTime<Local>>> = Mutex::new(HashMap::new());
+    static ref NEXT_BACKUP_TIMES: Mutex<HashMap<String, DateTime<Tz>>> = Mutex::new(HashMap::new());
 }
 
 pub struct RSBK {
@@ -30,8 +33,7 @@ pub enum BackupModeWrapper {
 
 impl RSBK {
     pub fn create() -> Self {
-        let mut config_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        config_path.push("BackupConfig");
+        let config_path = PathBuf::from("BackupConfig");
 
         let mut tasks: Vec<Arc<BackupModeWrapper>> = Vec::new();
         let mut next_backup_times = NEXT_BACKUP_TIMES.lock().unwrap();
@@ -46,7 +48,6 @@ impl RSBK {
                         if !next_backup_times.contains_key(file_name) {
                             next_backup_times.insert(file_name.clone(), initial_time);
                         }
-                     
 
                         match &config.options {
                             BackupMode::IncrementalMode { .. } => {
@@ -102,7 +103,7 @@ impl RSBK {
 
     pub fn run(self) {
         let mut handles = vec![];
-        let now = Local::now();
+        let now = Local::now().with_timezone(&Shanghai);
 
         for task_arc in self.tasks {
             let task_clone = Arc::clone(&task_arc);
@@ -122,6 +123,12 @@ impl RSBK {
                     if &now >= next_backup_time {
                         log::info!("开始任务备份: {}", name);
 
+                        // // 尝试开启所有网卡，如果失败则停止当前线程执行
+                        // if let Err(err) = startup_all_interfaces() {
+                        //     log::error!("Failed to start up interfaces: {}", err);
+                        //     return; // 立即停止当前线程执行
+                        // }
+
                         match &*task {
                             BackupModeWrapper::IncrementalMode { task, name } => {
                                 let task_lock = task.lock().unwrap();
@@ -132,6 +139,11 @@ impl RSBK {
                                 task_lock.backup(name);
                             }
                         }
+
+                        // // 在备份完成后关闭所有网卡
+                        // if let Err(err) = shutdown_all_interfaces() {
+                        //     log::error!("Failed to shut down interfaces: {}", err);
+                        // }
 
                         let backup_interval_minutes = match &*task {
                             BackupModeWrapper::IncrementalMode { task, .. } => {
@@ -165,9 +177,9 @@ impl RSBK {
         }
     }
 }
-fn parse_initial_backup_time(time_str: &str) -> DateTime<Local> {
+fn parse_initial_backup_time(time_str: &str) -> DateTime<Tz> {
+    let now = Local::now().with_timezone(&Shanghai);
     // 解析时间字符串 "mm:ss" 并返回对应的 DateTime<Local>
-    let now = Local::now();
     let parts: Vec<&str> = time_str.split(':').collect();
     let hours: u32 = parts[0].parse().unwrap();
     let minutes: u32 = parts[1].parse().unwrap();
